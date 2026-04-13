@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseAffFile, parseDicEntries, checkWordWithSuffixes, SuffixRule } from './suffix-engine';
+import { parseAffFile, parseDicEntries, checkWordWithSuffixes, SuffixRule, SuffixRuleIndex } from './suffix-engine';
 import { SpellResult, Suggestion, TextCheckResult } from './types';
 import { applyCommonRules, checkVowelHarmony } from './rules';
 
@@ -24,9 +24,11 @@ export interface MnSpellCheckerOptions {
 export class MnSpellChecker {
   private entries: Map<string, string[]>;
   private suffixRules: Map<string, SuffixRule[]>;
+  private ruleIndex: SuffixRuleIndex;
   private repRules: Array<[string, string]>;
   private options: Required<Pick<MnSpellCheckerOptions, 'checkVowelHarmony' | 'useCommonRules'>>;
-  private _ready: boolean = false;
+  public ready: boolean = false;
+  private suffixCache = new Map<string, boolean>();
 
   constructor(options?: MnSpellCheckerOptions) {
     this.options = {
@@ -36,6 +38,7 @@ export class MnSpellChecker {
 
     this.entries = new Map();
     this.suffixRules = new Map();
+    this.ruleIndex = { byLastChar: new Map() };
     this.repRules = [];
 
     let affContent: string;
@@ -54,6 +57,7 @@ export class MnSpellChecker {
 
     const affData = parseAffFile(affContent);
     this.suffixRules = affData.suffixRules;
+    this.ruleIndex = affData.ruleIndex;
     this.repRules = affData.repRules;
     this.entries = parseDicEntries(dicContent, affData.flagMode);
 
@@ -65,14 +69,7 @@ export class MnSpellChecker {
       }
     }
 
-    this._ready = true;
-  }
-
-  /**
-   * Checker амжилттай ачаалагдсан эсэхийг шалгана.
-   */
-  get ready(): boolean {
-    return this._ready;
+    this.ready = true;
   }
 
   private _findDictionaryFiles(): { affPath: string; dicPath: string } {
@@ -109,19 +106,16 @@ export class MnSpellChecker {
   /**
    * Нэг үг зөв эсэхийг шалгана.
    */
-  correct(word: string): boolean {
-    const cleaned = word.trim();
-    if (!cleaned) return true;
+  public correct(word: string): boolean {
+    if (!this.ready) return false;
 
-    // Тоо, латин тэмдэгт, цэг таслал бол шалгахгүй
-    if (/^[a-zA-Z0-9\s.,!?@#$%^&*()\-_+=\[\]{};':"\\|<>\/]+$/.test(cleaned)) {
-      return true;
+    // Нийтлэг дүрмийн алдаанууд мөн эсэх
+    const checkLength = Array.from(word).length;
+    if (checkLength > 0 && /[\?\!,\.]/.test(word[checkLength - 1])) {
+      return this.correct(word.slice(0, -1));
     }
 
-    // Хэт богино монгол үг (1 тэмдэгт бол зөв гэж тооцох — жишээ: "Би", "ч")
-    if (cleaned.length === 1) return true;
-
-    return checkWordWithSuffixes(cleaned, this.entries, this.suffixRules);
+    return checkWordWithSuffixes(word, this.entries, this.suffixRules, this.ruleIndex, this.suffixCache);
   }
 
   /**

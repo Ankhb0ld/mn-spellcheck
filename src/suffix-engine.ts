@@ -11,17 +11,23 @@ export interface DicEntry {
   flags: string[];
 }
 
+export interface SuffixRuleIndex {
+  byLastChar: Map<string, Array<{ flag: string; rule: SuffixRule }>>;
+}
+
 /**
  * .aff файлаас SFX дүрмүүдийг parse хийнэ.
  * FLAG long форматыг дэмжинэ (2 тэмдэгтийн flag).
  */
 export function parseAffFile(content: string): {
   suffixRules: Map<string, SuffixRule[]>;
+  ruleIndex: SuffixRuleIndex;
   repRules: Array<[string, string]>;
   flagMode: 'long' | 'short';
 } {
   const lines = content.split('\n');
   const suffixRules = new Map<string, SuffixRule[]>();
+  const ruleIndex: SuffixRuleIndex = { byLastChar: new Map() };
   const repRules: Array<[string, string]> = [];
   let flagMode: 'long' | 'short' = 'short';
 
@@ -72,12 +78,19 @@ export function parseAffFile(content: string): {
         if (!suffixRules.has(flag)) {
           suffixRules.set(flag, []);
         }
-        suffixRules.get(flag)!.push({ flag, strip, add, condition, continuationFlags });
+        const ruleObj = { flag, strip, add, condition, continuationFlags };
+        suffixRules.get(flag)!.push(ruleObj);
+
+        if (add) {
+          const lastChar = add[add.length - 1];
+          if (!ruleIndex.byLastChar.has(lastChar)) ruleIndex.byLastChar.set(lastChar, []);
+          ruleIndex.byLastChar.get(lastChar)!.push({ flag, rule: ruleObj });
+        }
       }
     }
   }
 
-  return { suffixRules, repRules, flagMode };
+  return { suffixRules, ruleIndex, repRules, flagMode };
 }
 
 /**
@@ -140,7 +153,11 @@ export function checkWordWithSuffixes(
   word: string,
   entries: Map<string, string[]>,
   suffixRules: Map<string, SuffixRule[]>,
+  ruleIndex: SuffixRuleIndex,
+  cache: Map<string, boolean>
 ): boolean {
+  if (cache.has(word)) return cache.get(word)!;
+
   // Шууд хайх
   if (entries.has(word)) return true;
 
@@ -153,8 +170,11 @@ export function checkWordWithSuffixes(
     if (entries.has(capitalized)) return true;
   }
 
-  // Suffix stripping (starts with undefined continuation flag constraint, max depth 3)
-  if (checkWithSuffixStripping(lower, entries, suffixRules)) return true;
+  // Suffix stripping (starts with undefined continuation flag constraint, max depth 2)
+  if (checkWithSuffixStripping(lower, entries, ruleIndex, undefined, 0, cache)) {
+    cache.set(word, true);
+    return true;
+  }
 
   // Compound word check: үгийг хоёр хэсэгт хуваагаад тус тусыг нь шалгах
   if (lower.length >= 4) {
@@ -162,38 +182,52 @@ export function checkWordWithSuffixes(
       const left = lower.substring(0, i);
       const right = lower.substring(i);
 
-      const leftOk = entries.has(left)
-        || checkWithSuffixStripping(left, entries, suffixRules);
+      let leftOk = entries.has(left) || cache.get(left);
+      if (leftOk === undefined) {
+        leftOk = checkWithSuffixStripping(left, entries, ruleIndex, undefined, 0, cache);
+        cache.set(left, leftOk);
+      }
       if (!leftOk) continue;
 
-      const rightOk = entries.has(right)
-        || checkWithSuffixStripping(right, entries, suffixRules);
-      if (rightOk) return true;
+      let rightOk = entries.has(right) || cache.get(right);
+      if (rightOk === undefined) {
+        rightOk = checkWithSuffixStripping(right, entries, ruleIndex, undefined, 0, cache);
+        cache.set(right, rightOk);
+      }
+      if (rightOk) {
+        cache.set(word, true);
+        return true;
+      }
     }
   }
 
+  cache.set(word, false);
   return false;
 }
 
 function checkWithSuffixStripping(
   word: string,
   entries: Map<string, string[]>,
-  suffixRules: Map<string, SuffixRule[]>,
+  ruleIndex: SuffixRuleIndex,
   requiredContinuationFlag?: string,
-  depth: number = 0
+  depth: number = 0,
+  cache?: Map<string, boolean>
 ): boolean {
-  if (depth > 3) return false;
+  if (depth > 2 || word.length < 2) return false;
 
-  for (const [flag, rules] of suffixRules) {
-    for (const rule of rules) {
-      if (!rule.add) continue;
-      
-      // If we are recursing inwards, the inner suffix MUST have the outer suffix's flag in its continuationFlags
-      if (requiredContinuationFlag && !rule.continuationFlags.includes(requiredContinuationFlag)) {
-        continue;
-      }
+  const cacheKey = requiredContinuationFlag ? `${word}|${requiredContinuationFlag}` : word;
+  if (cache && cache.has(cacheKey)) return cache.get(cacheKey)!;
 
-      if (word.endsWith(rule.add)) {
+  const lastChar = word[word.length - 1];
+  const candidates = ruleIndex.byLastChar.get(lastChar) || [];
+
+  for (const { flag, rule } of candidates) {
+    // If we are recursing inwards, the inner suffix MUST have the outer suffix's flag in its continuationFlags
+    if (requiredContinuationFlag && !rule.continuationFlags.includes(requiredContinuationFlag)) {
+      continue;
+    }
+
+    if (word.endsWith(rule.add)) {
         const base = word.substring(0, word.length - rule.add.length);
         const root = base + rule.strip;
 
@@ -204,14 +238,17 @@ function checkWithSuffixStripping(
 
         const rootFlags = entries.get(root);
         if (rootFlags && rootFlags.includes(flag)) {
+          if (cache) cache.set(cacheKey, true);
           return true;
         }
 
-        if (checkWithSuffixStripping(root, entries, suffixRules, flag, depth + 1)) {
+        if (checkWithSuffixStripping(root, entries, ruleIndex, flag, depth + 1, cache)) {
+          if (cache) cache.set(cacheKey, true);
           return true;
         }
       }
-    }
   }
+  
+  if (cache) cache.set(cacheKey, false);
   return false;
 }

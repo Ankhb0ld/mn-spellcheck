@@ -1,0 +1,66 @@
+{
+  "name": "mn-spellcheck",
+  "version": "1.0.0",
+  "description": "Монгол кирилл бичгийн алдаа шалгагч / Mongolian Cyrillic spell checker for websites and Node.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true})\"",
+    "prebuild": "npm run clean",
+    "prepublishOnly": "npm run build && npm test",
+    "test": "node test/test.js",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "mongolian",
+    "spellcheck",
+    "spell-checker",
+    "spell",
+    "checker",
+    "cyrillic",
+    "proofread",
+    "grammar",
+    "nlp",
+    "text",
+    "монгол",
+    "бичгийн алдаа",
+    "кирилл",
+    "зөв бичих",
+    "алдаа шалгагч"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "dictionary-mn": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.2"
+  }
+}

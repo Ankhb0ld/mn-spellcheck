@@ -42,17 +42,17 @@
     "зөв бичих",
     "алдаа шалгагч"
   ],
-  "author": "",
+  "author": "Ankhbold",
   "license": "MIT",
   "type": "commonjs",
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/Ankhb0ld/mn-spellcheck.git"
   },
   "bugs": {
-    "url": ""
+    "url": "https://github.com/Ankhb0ld/mn-spellcheck/issues"
   },
-  "homepage": "",
+  "homepage": "https://github.com/Ankhb0ld/mn-spellcheck#readme",
   "engines": {
     "node": ">=14.0.0"
   },

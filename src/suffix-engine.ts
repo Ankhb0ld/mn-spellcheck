@@ -3,6 +3,7 @@ export interface SuffixRule {
   strip: string;
   add: string;
   condition: RegExp;
+  continuationFlags: string[];
 }
 
 export interface DicEntry {
@@ -58,6 +59,7 @@ export function parseAffFile(content: string): {
         // add хэсэгт flag байж болно: "на/040870" -> зөвхөн "на" авна
         const addSlash = addRaw.indexOf('/');
         const add = addSlash >= 0 ? addRaw.substring(0, addSlash) : (addRaw === '0' ? '' : addRaw);
+        const continuationFlags = addSlash >= 0 ? splitFlags(addRaw.substring(addSlash + 1), flagMode) : [];
 
         const conditionStr = parts.length >= 5 ? parts[4] : '.';
         let condition: RegExp;
@@ -70,7 +72,7 @@ export function parseAffFile(content: string): {
         if (!suffixRules.has(flag)) {
           suffixRules.set(flag, []);
         }
-        suffixRules.get(flag)!.push({ flag, strip, add, condition });
+        suffixRules.get(flag)!.push({ flag, strip, add, condition, continuationFlags });
       }
     }
   }
@@ -151,11 +153,10 @@ export function checkWordWithSuffixes(
     if (entries.has(capitalized)) return true;
   }
 
-  // Suffix stripping
+  // Suffix stripping (starts with undefined continuation flag constraint, max depth 3)
   if (checkWithSuffixStripping(lower, entries, suffixRules)) return true;
 
   // Compound word check: үгийг хоёр хэсэгт хуваагаад тус тусыг нь шалгах
-  // Жишээ: "мэдэхгүй" = "мэдэх" + "гүй"
   if (lower.length >= 4) {
     for (let i = 2; i <= lower.length - 2; i++) {
       const left = lower.substring(0, i);
@@ -178,10 +179,19 @@ function checkWithSuffixStripping(
   word: string,
   entries: Map<string, string[]>,
   suffixRules: Map<string, SuffixRule[]>,
+  requiredContinuationFlag?: string,
+  depth: number = 0
 ): boolean {
+  if (depth > 3) return false;
+
   for (const [flag, rules] of suffixRules) {
     for (const rule of rules) {
       if (!rule.add) continue;
+      
+      // If we are recursing inwards, the inner suffix MUST have the outer suffix's flag in its continuationFlags
+      if (requiredContinuationFlag && !rule.continuationFlags.includes(requiredContinuationFlag)) {
+        continue;
+      }
 
       if (word.endsWith(rule.add)) {
         const base = word.substring(0, word.length - rule.add.length);
@@ -189,12 +199,16 @@ function checkWithSuffixStripping(
 
         if (root.length === 0) continue;
 
+        const toCheck = rule.strip ? root : base;
+        if (!rule.condition.test(toCheck)) continue;
+
         const rootFlags = entries.get(root);
         if (rootFlags && rootFlags.includes(flag)) {
-          const toCheck = rule.strip ? root : base;
-          if (rule.condition.test(toCheck)) {
-            return true;
-          }
+          return true;
+        }
+
+        if (checkWithSuffixStripping(root, entries, suffixRules, flag, depth + 1)) {
+          return true;
         }
       }
     }

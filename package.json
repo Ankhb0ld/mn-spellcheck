@@ -1,6 +1,6 @@
 {
   "name": "mn-spellcheck",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Монгол кирилл бичгийн алдаа шалгагч / Mongolian Cyrillic spell checker for websites and Node.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -67,22 +67,28 @@ function findFiles(dir: string, exts: string[], fileList: string[] = []): string
 
 function extractCyrillicWords(text: string) {
   const words: { word: string; index: number; line: number }[] = [];
-  const lines = text.split('\n');
-  let currentIndex = 0;
   const regex = /[а-яА-ЯөӨүҮёЁ-]+/g;
+  let match;
+  
+  // Create an array mapping character index to line number for fast lookup
+  // We can just calculate line number on the fly
+  let currentLine = 1;
+  let lastIndex = 0;
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    let match;
-    while ((match = regex.exec(line)) !== null) {
-      if (match[0].length <= 1) continue; // Ганц үсэг алгасах
-      words.push({
-        word: match[0],
-        index: currentIndex + match.index,
-        line: i + 1
-      });
+  while ((match = regex.exec(text)) !== null) {
+    if (match[0].length <= 1) continue; // Ганц үсэг алгасах
+    
+    // Count newlines between last match and this match
+    for (let i = lastIndex; i < match.index; i++) {
+      if (text[i] === '\n') currentLine++;
     }
-    currentIndex += line.length + 1; // +1 for '\n'
+    lastIndex = match.index;
+
+    words.push({
+      word: match[0],
+      index: match.index,
+      line: currentLine
+    });
   }
   return words;
 }
